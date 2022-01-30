@@ -14,8 +14,12 @@ github.com/aws/aws-sdk-go-v2/internal/ini v1.3.4 h1:0NrDHIwS1LIR750ltj6ciiu4NZLp
 github.com/aws/aws-sdk-go-v2/internal/ini v1.3.4/go.mod h1:R3sWUqPcfXSiF/LSFJhjyJmpg9uV6yP2yv3YZZjldVI=
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.13.0 h1:NfqONXoDwWtBCnkPVz7GL/FKMo/s//TnHSwF+PjzG5c=
 github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.13.0/go.mod h1:OFC7Rn7jyPoKtczT+TARRbxKHRmN9nyrJ2rmCc3ewuQ=
+github.com/aws/aws-sdk-go-v2/service/ec2 v1.29.0 h1:7jk4NfzDnnSbaR9E4mOBWRZXQThq5rsqjlDC+uu9dsI=
+github.com/aws/aws-sdk-go-v2/service/ec2 v1.29.0/go.mod h1:HoTu0hnXGafTpKIZQ60jw0ybhhCH1QYf20oL7GEJFdg=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.7.0 h1:4QAOB3KrvI1ApJK14sliGr3Ie2pjyvNypn/lfzDHfUw=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.7.0/go.mod h1:K/qPe6AP2TGYv4l6n7c88zh9jWBDf6nHhvg1fx/EWfU=
+github.com/aws/aws-sdk-go-v2/service/route53resolver v1.13.0 h1:9oAcQXA8dtRQEP6+jRBEExclIXZAzZvZNtJzaPAMJVY=
+github.com/aws/aws-sdk-go-v2/service/route53resolver v1.13.0/go.mod h1:om7fuvD2cPAG+ClzOVYZzNy/WkfG6eQ3IScmclSvkZc=
 github.com/aws/aws-sdk-go-v2/service/sso v1.9.0 h1:1qLJeQGBmNQW3mBNzK2CFmrQNmoXWrscPqsrAaU1aTA=
 github.com/aws/aws-sdk-go-v2/service/sso v1.9.0/go.mod h1:vCV4glupK3tR7pw7ks7Y4jYRL86VvxS+g5qk04YeWrU=
 github.com/aws/aws-sdk-go-v2/service/sts v1.14.0 h1:ksiDXhvNYg0D2/UFkLejsaz3LqpW5yjNQ8Nx9Sn2c0E=
@@ -26,6 +30,7 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/google/go-cmp v0.5.4/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.6 h1:BKbKCqvP6I+rmFHt06ZmyQtvB8xAkWdhFyr0ZUNZcxQ=
 github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/jmespath/go-jmespath v0.4.0 h1:BEgLn5cpjn8UN1mAw4NjwDrS35OdebyEtFe+9YPoQUg=
 github.com/jmespath/go-jmespath v0.4.0/go.mod h1:T8mJZnbsbmF+m6zOOFylbeCJqk5+pHWvzYPziyZiYoo=
 github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfCI6z80xFu9LTZmf1ZRjMHUOPmWr69U=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
