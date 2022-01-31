@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,7 +18,12 @@ import (
 	r53types "github.com/aws/aws-sdk-go-v2/service/route53resolver/types"
 )
 
-const LOG_GROUP_NAME = "/ec2/dnsspy"
+// TODO(dw): Make a DNSSpy struct to encapsulate this stuff?
+
+const (
+	DEFAULT_LOG_GROUP_NAME          = "/ec2/dnsspy"
+	DEFAULT_RESOLVER_QUERY_LOG_NAME = "ec2-dnsspy"
+)
 
 func getLogGroupArn(ctx context.Context, cwl *cloudwatchlogs.Client, name string) (*string, error) {
 	resp, err := cwl.DescribeLogGroups(ctx, &cloudwatchlogs.DescribeLogGroupsInput{
@@ -57,19 +63,22 @@ func ensureLogGroupExists(ctx context.Context, cwl *cloudwatchlogs.Client, name 
 		RetentionInDays: aws.Int32(retentionDays),
 		LogGroupName:    &name,
 	})
+	if err != nil {
+		return aws.String(""), err
+	}
 
 	return getLogGroupArn(ctx, cwl, name)
 }
 
-func ensureResolverQueryLogExists(ctx context.Context, r53 *route53resolver.Client, logGroupArn, vpcID *string) error {
+func ensureResolverQueryLogExists(ctx context.Context, r53 *route53resolver.Client, resolverQueryLogName, logGroupArn, vpcID *string) error {
 	// TODO handle if there are > 1 or something, multi region?
 	//      it might be better to just check for this w/ an associated vpc id before ensuring the cw logs?
 	list, err := r53.ListResolverQueryLogConfigs(ctx, &route53resolver.ListResolverQueryLogConfigsInput{
 		//
 		Filters: []r53types.Filter{
-			r53types.Filter{
+			{
 				Name:   aws.String("Name"),
-				Values: []string{"ec2-dnsspy"},
+				Values: []string{*resolverQueryLogName},
 			},
 		},
 	})
@@ -81,9 +90,9 @@ func ensureResolverQueryLogExists(ctx context.Context, r53 *route53resolver.Clie
 		return nil
 	}
 	resp, err := r53.CreateResolverQueryLogConfig(ctx, &route53resolver.CreateResolverQueryLogConfigInput{
-		CreatorRequestId: aws.String("todothisshouldbeunique"),
+		CreatorRequestId: aws.String("TODO-thisshouldbeunique"),
 		DestinationArn:   logGroupArn,
-		Name:             aws.String("ec2-dnsspy"),
+		Name:             aws.String(*resolverQueryLogName),
 	})
 	if err != nil {
 		return err
@@ -95,8 +104,8 @@ func ensureResolverQueryLogExists(ctx context.Context, r53 *route53resolver.Clie
 	return err
 }
 
-func setup(ctx context.Context, cfg aws.Config, instanceID string) error {
-	fmt.Println("Looking up VPC ID")
+func setup(ctx context.Context, cfg aws.Config, instanceID, logGroupName, resolverQueryLogName string) error {
+	fmt.Fprintln(os.Stderr, "Looking up VPC ID")
 	ec2c := ec2.NewFromConfig(cfg)
 	resp, err := ec2c.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{instanceID},
@@ -104,18 +113,21 @@ func setup(ctx context.Context, cfg aws.Config, instanceID string) error {
 	if err != nil {
 		return err
 	}
+	if len(resp.Reservations) == 0 {
+		return fmt.Errorf("Instance %s is not active in a VPC", instanceID)
+	}
 	vpcID := resp.Reservations[0].Instances[0].VpcId
 
-	fmt.Println("Creating Cloudwatch log group")
+	fmt.Fprintln(os.Stderr, "Creating Cloudwatch log group")
 	cw := cloudwatchlogs.NewFromConfig(cfg)
-	logGroupArn, err := ensureLogGroupExists(ctx, cw, LOG_GROUP_NAME, 1)
+	logGroupArn, err := ensureLogGroupExists(ctx, cw, logGroupName, 1)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Creating Route53 resolver query log")
+	fmt.Fprintln(os.Stderr, "Creating Route53 resolver query log")
 	r53 := route53resolver.NewFromConfig(cfg)
-	err = ensureResolverQueryLogExists(ctx, r53, logGroupArn, vpcID)
+	err = ensureResolverQueryLogExists(ctx, r53, &resolverQueryLogName, logGroupArn, vpcID)
 	if err != nil {
 		return err
 	}
@@ -123,19 +135,70 @@ func setup(ctx context.Context, cfg aws.Config, instanceID string) error {
 	return nil
 }
 
+func teardown(ctx context.Context, cfg aws.Config, logGroupName, vpcID, resolverQueryLogID string) error {
+	r53 := route53resolver.NewFromConfig(cfg)
+	_, err := r53.DisassociateResolverQueryLogConfig(ctx, &route53resolver.DisassociateResolverQueryLogConfigInput{
+		ResolverQueryLogConfigId: &resolverQueryLogID,
+		ResourceId:               &vpcID,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r53.DeleteResolverQueryLogConfig(ctx, &route53resolver.DeleteResolverQueryLogConfigInput{
+		ResolverQueryLogConfigId: &resolverQueryLogID,
+	})
+	if err != nil {
+		return err
+	}
+	cw := cloudwatchlogs.NewFromConfig(cfg)
+	_, err = cw.DeleteLogGroup(ctx, &cloudwatchlogs.DeleteLogGroupInput{
+		LogGroupName: &logGroupName,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
-	var instanceID string
+	var instanceID, logGroupName, resolverQueryLogName, outputFmt string
+	var rm bool
 
 	flag.StringVar(&instanceID, "i", "", "EC2 Instance ID")
 	flag.StringVar(&instanceID, "instance-id", "", "EC2 Instance ID")
+	flag.StringVar(&logGroupName, "l", DEFAULT_LOG_GROUP_NAME, "Cloudwatch log group name to log DNS requests")
+	flag.StringVar(&logGroupName, "log-group-name", DEFAULT_LOG_GROUP_NAME, "Cloudwatch log group name to log DNS requests")
+	flag.StringVar(&resolverQueryLogName, "r", DEFAULT_RESOLVER_QUERY_LOG_NAME, "Name to give the Route53 Resolver query log")
+	flag.StringVar(&resolverQueryLogName, "resolver-query-log-name", DEFAULT_RESOLVER_QUERY_LOG_NAME, "Name to give the Route53 Resolver query log")
+	flag.StringVar(&outputFmt, "o", "default", "Output format. 'default' or 'json'")
+	flag.StringVar(&outputFmt, "output", "default", "Output format. 'default' or 'json'")
+	flag.BoolVar(&rm, "rm", false, "Remove ec2-dnsspy related AWS resources when shutting down")
+
 	flag.Usage = func() {
 		fmt.Print(`Spy on DNS requests for your EC2 instances in (almost) real-time
 
 usage: ec2-dnsspy [options]
-	-i, --instance-id	EC2 Instance ID
+	-i, --instance-id               EC2 Instance ID
+	-l, --log-group-name            Cloudwatch log group name to log DNS requests (Default: /ec2/dnsspy)
+	-r, --resolver-query-log-name   Name to give the Route53 Resolver query log (Default: ec2-dnsspy)
+	--rm                            Remove ec2-dnsspy related AWS resources when shutting down
+
+	-o, --output                    Output format. 'default' or 'json'
 `)
 	}
 	flag.Parse()
+
+	if instanceID == "" {
+		flag.Usage()
+		fmt.Println("Missing instance ID")
+		os.Exit(1)
+	}
+
+	if outputFmt != "default" && outputFmt != "json" {
+		flag.Usage()
+		fmt.Printf("Invalid output type: %s\n", outputFmt)
+		os.Exit(1)
+	}
 
 	ctx := context.TODO()
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -143,14 +206,14 @@ usage: ec2-dnsspy [options]
 		panic("couldn't configure aws client")
 	}
 
-	err = setup(ctx, cfg, instanceID)
+	err = setup(ctx, cfg, instanceID, logGroupName, resolverQueryLogName)
 	if err != nil {
 		panic(err)
 	}
 	cw := cloudwatchlogs.NewFromConfig(cfg)
 
 	tailConfig := TailConfig{
-		LogGroupName:  aws.String(LOG_GROUP_NAME),
+		LogGroupName:  aws.String(logGroupName),
 		LogStreamName: aws.String("."),
 		StartTime:     aws.Time(time.Now()),
 		EndTime:       aws.Time(time.Now()),
@@ -172,14 +235,21 @@ usage: ec2-dnsspy [options]
 		panic(err)
 	}
 
-	fmt.Printf("%-5s %-30s %-14s\n", "query", "name", "timestamp")
+	if outputFmt == "default" {
+		fmt.Printf("%-5s %-45s %-14s\n", "query", "name", "timestamp")
+	}
+
 	for event := range tail {
-		var r DNSQuery
-		err = json.Unmarshal([]byte(*event.Message), &r)
-		if err != nil {
+		if outputFmt == "default" {
+			var r DNSQuery
+			err = json.Unmarshal([]byte(*event.Message), &r)
+			if err != nil {
+				fmt.Println(*event.Message)
+				continue
+			}
+			fmt.Printf("%-5s %-45s %-14s\n", r.QueryType, r.QueryName, r.QueryTimestamp)
+		} else if outputFmt == "json" {
 			fmt.Println(*event.Message)
-			continue
 		}
-		fmt.Printf("%-5s %-30s %-14s\n", r.QueryType, r.QueryName, r.QueryTimestamp)
 	}
 }
